@@ -21,7 +21,7 @@ export default function UserTypeScreen({ navigation }: UserTypeScreenProps) {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Welcome to Rino</Text>
-        <Text style={styles.subtitle}>Choose your account type</Text>
+        <Text style={styles.subtitle}>Create your parent account</Text>
       </View>
 
       <View style={styles.optionsContainer}>
@@ -34,25 +34,11 @@ export default function UserTypeScreen({ navigation }: UserTypeScreenProps) {
           <View style={styles.iconContainer}>
             <Text style={styles.icon}>👨‍👩‍👧‍👦</Text>
           </View>
-          <Text style={styles.optionTitle}>Parent</Text>
+          <Text style={styles.optionTitle}>Parent Account</Text>
           <Text style={styles.optionDescription}>
-            Create and manage tasks, set up rewards, and track your child's
-            progress
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.optionCard}
-          onPress={() =>
-            navigation.navigate("Register", { userType: "child" as const })
-          }
-        >
-          <View style={styles.iconContainer}>
-            <Text style={styles.icon}>👶</Text>
-          </View>
-          <Text style={styles.optionTitle}>Child</Text>
-          <Text style={styles.optionDescription}>
-            Complete tasks, earn coins, and redeem rewards
+            Create your account to manage tasks, set up rewards, and track your
+            child's progress. You'll be able to create and pair child profiles
+            using unique codes.
           </Text>
         </TouchableOpacity>
       </View>

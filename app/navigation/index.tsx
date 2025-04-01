@@ -125,7 +125,7 @@ export const Navigation = () => {
   const { user, isLoading } = useAuth();
 
   if (isLoading) {
-    return <LoadingScreen fullScreen />;
+    return <LoadingScreen style={{ flex: 1 }} />;
   }
 
   return (
@@ -136,7 +136,7 @@ export const Navigation = () => {
     >
       {!user ? (
         <Stack.Screen name="Auth" component={AuthNavigator} />
-      ) : user.type === "parent" ? (
+      ) : user.userType === "parent" ? (
         <Stack.Screen name="ParentMain" component={ParentNavigator} />
       ) : (
         <Stack.Screen name="ChildMain" component={ChildNavigator} />

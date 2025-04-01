@@ -20,11 +20,7 @@ type RegisterScreenProps = NativeStackScreenProps<
   "Register"
 >;
 
-export default function RegisterScreen({
-  navigation,
-  route,
-}: RegisterScreenProps) {
-  const { userType } = route.params;
+export default function RegisterScreen({ navigation }: RegisterScreenProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,9 +28,28 @@ export default function RegisterScreen({
   const [isLoading, setIsLoading] = useState(false);
   const { signUp } = useAuth();
 
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validatePassword = (password: string) => {
+    return password.length >= 6;
+  };
+
   const handleRegister = async () => {
     if (!name || !email || !password || !confirmPassword) {
       Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      Alert.alert("Error", "Please enter a valid email address");
+      return;
+    }
+
+    if (!validatePassword(password)) {
+      Alert.alert("Error", "Password must be at least 6 characters long");
       return;
     }
 
@@ -45,10 +60,21 @@ export default function RegisterScreen({
 
     try {
       setIsLoading(true);
-      await signUp(name, email, password, userType);
+      await signUp(name, email, password);
       // Navigation will be handled automatically by the auth context
-    } catch (error) {
-      Alert.alert("Error", "Failed to create account");
+    } catch (error: any) {
+      console.error("Registration error:", error);
+      let errorMessage = "Failed to create account";
+
+      if (error.code === "auth/email-already-in-use") {
+        errorMessage = "This email is already registered";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Please enter a valid email address";
+      } else if (error.code === "auth/weak-password") {
+        errorMessage = "Password should be at least 6 characters";
+      }
+
+      Alert.alert("Error", errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -57,9 +83,9 @@ export default function RegisterScreen({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Create Account</Text>
+        <Text style={styles.title}>Create Parent Account</Text>
         <Text style={styles.subtitle}>
-          Sign up as a {userType === "parent" ? "parent" : "child"}
+          Sign up to manage your child's tasks and rewards
         </Text>
       </View>
 
@@ -86,6 +112,7 @@ export default function RegisterScreen({
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"
+            autoCorrect={false}
           />
         </View>
 
@@ -99,6 +126,7 @@ export default function RegisterScreen({
             secureTextEntry
             autoCapitalize="none"
             autoComplete="new-password"
+            autoCorrect={false}
           />
         </View>
 
@@ -112,6 +140,7 @@ export default function RegisterScreen({
             secureTextEntry
             autoCapitalize="none"
             autoComplete="new-password"
+            autoCorrect={false}
           />
         </View>
 

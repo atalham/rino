@@ -18,6 +18,6 @@ export type ChildTabParamList = {
 
 export type AuthStackParamList = {
   Login: undefined;
-  Register: { userType: "parent" | "child" };
+  Register: { userType: "parent" };
   UserType: undefined;
 };
