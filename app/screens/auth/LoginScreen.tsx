@@ -7,27 +7,37 @@ import {
   TouchableOpacity,
   ViewStyle,
   TextStyle,
+  Alert,
 } from "react-native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { AuthStackParamList } from "../../types/navigation";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
+import { useAuth } from "../../contexts/AuthContext";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AuthStackParamList } from "../../types/navigation";
 
-type LoginScreenProps = {
-  navigation: NativeStackNavigationProp<AuthStackParamList, "Login">;
-};
+type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, "Login">;
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { signIn } = useAuth();
 
   const handleLogin = async () => {
-    setIsLoading(true);
-    // TODO: Implement login logic
-    setTimeout(() => {
+    if (!email || !password) {
+      Alert.alert("Error", "Please fill in all fields");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await signIn(email, password);
+      // Navigation will be handled automatically by the auth context
+    } catch (error) {
+      Alert.alert("Error", "Invalid email or password");
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -47,6 +57,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoComplete="email"
           />
         </View>
 
@@ -58,6 +69,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            autoCapitalize="none"
+            autoComplete="password"
           />
         </View>
 
@@ -71,15 +84,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           loading={isLoading}
           fullWidth
         />
+      </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account?</Text>
-          <Button
-            title="Sign Up"
-            variant="ghost"
-            onPress={() => navigation.navigate("UserType")}
-          />
-        </View>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Don't have an account?</Text>
+        <TouchableOpacity onPress={() => navigation.navigate("UserType")}>
+          <Text style={styles.footerButton}>Sign Up</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -94,21 +105,18 @@ const styles = StyleSheet.create({
   header: {
     marginTop: theme.spacing.xl * 2,
     marginBottom: theme.spacing.xl,
-    alignItems: "center",
   } as ViewStyle,
   title: {
     fontSize: theme.typography.h1.fontSize,
     fontWeight: theme.typography.h1.fontWeight,
     color: theme.colors.text.primary,
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   } as TextStyle,
   subtitle: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.body.fontWeight,
     color: theme.colors.text.secondary,
   } as TextStyle,
   form: {
-    flex: 1,
     gap: theme.spacing.md,
   } as ViewStyle,
   inputContainer: {
@@ -116,7 +124,6 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   label: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: "600" as const,
     color: theme.colors.text.primary,
   } as TextStyle,
   input: {
@@ -135,14 +142,23 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.body.fontSize,
     color: theme.colors.primary,
   } as TextStyle,
+  button: {
+    marginTop: theme.spacing.md,
+  } as ViewStyle,
   footer: {
-    marginTop: theme.spacing.xl,
+    flexDirection: "row",
+    justifyContent: "center",
     alignItems: "center",
+    marginTop: "auto",
+    gap: theme.spacing.xs,
   } as ViewStyle,
   footerText: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.body.fontWeight,
     color: theme.colors.text.secondary,
-    marginBottom: theme.spacing.sm,
+  } as TextStyle,
+  footerButton: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.body.fontWeight,
   } as TextStyle,
 });

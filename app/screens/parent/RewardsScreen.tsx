@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -7,77 +7,79 @@ import {
   TouchableOpacity,
   ViewStyle,
   TextStyle,
+  Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
-import { RewardCard } from "../../../components/RewardCard";
+import { RewardCard } from "../../components/ui/RewardCard";
+import { useData } from "../../contexts/DataContext";
+import { LoadingScreen } from "../../components/ui/LoadingScreen";
 
-// Temporary mock data
-const mockRewards = [
-  {
-    id: "1",
-    title: "Extra Screen Time",
-    description: "30 minutes of additional screen time",
-    cost: 100,
-    isActive: true,
-  },
-  {
-    id: "2",
-    title: "Ice Cream Treat",
-    description: "One ice cream cone of choice",
-    cost: 150,
-    isActive: true,
-  },
-  {
-    id: "3",
-    title: "New Toy",
-    description: "Choose a toy under $20",
-    cost: 500,
-    isActive: false,
-  },
-];
-
-export default function ParentRewardsScreen() {
-  const [rewards, setRewards] = useState(mockRewards);
+function ParentRewardsScreen() {
+  const router = useRouter();
+  const { rewards, isLoading, deleteReward } = useData();
 
   const handleRewardPress = (rewardId: string) => {
-    // TODO: Navigate to reward details
+    router.push(`/parent/rewards/${rewardId}`);
+  };
+
+  const handleRewardDelete = (rewardId: string) => {
+    Alert.alert(
+      "Delete Reward",
+      "Are you sure you want to delete this reward?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteReward(rewardId),
+        },
+      ]
+    );
   };
 
   const handleCreateReward = () => {
-    // TODO: Navigate to create reward screen
+    router.push("/parent/rewards/new");
   };
 
-  const renderReward = ({ item }: { item: (typeof mockRewards)[0] }) => (
-    <RewardCard
-      title={item.title}
-      description={item.description}
-      cost={item.cost}
-      onPress={() => handleRewardPress(item.id)}
-      isAffordable={item.isActive}
-    />
-  );
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Rewards</Text>
-        <Text style={styles.subtitle}>Manage rewards for your children</Text>
+        <Text style={styles.subtitle}>Manage available rewards</Text>
       </View>
 
       <FlatList
         data={rewards}
-        renderItem={renderReward}
         keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <RewardCard
+            reward={item}
+            onPress={() => handleRewardPress(item.id)}
+            onDelete={() => handleRewardDelete(item.id)}
+          />
+        )}
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No rewards yet</Text>
+            <Text style={styles.emptySubtext}>
+              Create a reward to get started
+            </Text>
+          </View>
+        }
       />
 
       <View style={styles.footer}>
-        <Button
-          title="Create New Reward"
-          onPress={handleCreateReward}
-          fullWidth
-        />
+        <Button title="Create Reward" onPress={handleCreateReward} fullWidth />
       </View>
     </View>
   );
@@ -102,12 +104,26 @@ const styles = StyleSheet.create({
   } as TextStyle,
   subtitle: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.body.fontWeight,
     color: theme.colors.text.secondary,
   } as TextStyle,
   list: {
     padding: theme.spacing.lg,
+    gap: theme.spacing.md,
   } as ViewStyle,
+  emptyContainer: {
+    alignItems: "center",
+    padding: theme.spacing.xl,
+  } as ViewStyle,
+  emptyText: {
+    fontSize: theme.typography.h3.fontSize,
+    fontWeight: theme.typography.h3.fontWeight,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.xs,
+  } as TextStyle,
+  emptySubtext: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.secondary,
+  } as TextStyle,
   footer: {
     padding: theme.spacing.lg,
     backgroundColor: theme.colors.surface,
@@ -115,3 +131,5 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
   } as ViewStyle,
 });
+
+export default ParentRewardsScreen;

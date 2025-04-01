@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -7,74 +7,75 @@ import {
   TouchableOpacity,
   ViewStyle,
   TextStyle,
+  Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
-import { TaskCard } from "../../../components/TaskCard";
+import { TaskCard } from "../../components/ui/TaskCard";
+import { useData } from "../../contexts/DataContext";
+import { LoadingScreen } from "../../components/ui/LoadingScreen";
 
-// Temporary mock data
-const mockTasks = [
-  {
-    id: "1",
-    title: "Clean Room",
-    description: "Make bed, vacuum, and organize toys",
-    reward: 50,
-    isCompleted: false,
-    assignedTo: "Child 1",
-  },
-  {
-    id: "2",
-    title: "Do Homework",
-    description: "Complete math worksheet and reading assignment",
-    reward: 75,
-    isCompleted: true,
-    assignedTo: "Child 1",
-  },
-];
-
-export default function ParentTasksScreen() {
-  const [tasks, setTasks] = useState(mockTasks);
+function ParentTasksScreen() {
+  const router = useRouter();
+  const { tasks, isLoading, deleteTask } = useData();
 
   const handleTaskPress = (taskId: string) => {
-    // TODO: Navigate to task details
+    router.push(`/parent/tasks/${taskId}`);
+  };
+
+  const handleTaskDelete = (taskId: string) => {
+    Alert.alert("Delete Task", "Are you sure you want to delete this task?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteTask(taskId),
+      },
+    ]);
   };
 
   const handleCreateTask = () => {
-    // TODO: Navigate to create task screen
+    router.push("/parent/tasks/new");
   };
 
-  const renderTask = ({ item }: { item: (typeof mockTasks)[0] }) => (
-    <TaskCard
-      title={item.title}
-      description={item.description}
-      reward={item.reward}
-      isCompleted={item.isCompleted}
-      onPress={() => handleTaskPress(item.id)}
-      onComplete={() => {
-        // TODO: Implement task completion
-      }}
-      isChildView={false}
-    />
-  );
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Tasks</Text>
-        <Text style={styles.subtitle}>
-          Manage and assign tasks to your children
-        </Text>
+        <Text style={styles.subtitle}>Manage your children's tasks</Text>
       </View>
 
       <FlatList
         data={tasks}
-        renderItem={renderTask}
         keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <TaskCard
+            task={item}
+            onPress={() => handleTaskPress(item.id)}
+            onDelete={() => handleTaskDelete(item.id)}
+          />
+        )}
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No tasks yet</Text>
+            <Text style={styles.emptySubtext}>
+              Create a task to get started
+            </Text>
+          </View>
+        }
       />
 
       <View style={styles.footer}>
-        <Button title="Create New Task" onPress={handleCreateTask} fullWidth />
+        <Button title="Create Task" onPress={handleCreateTask} fullWidth />
       </View>
     </View>
   );
@@ -99,12 +100,26 @@ const styles = StyleSheet.create({
   } as TextStyle,
   subtitle: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.body.fontWeight,
     color: theme.colors.text.secondary,
   } as TextStyle,
   list: {
     padding: theme.spacing.lg,
+    gap: theme.spacing.md,
   } as ViewStyle,
+  emptyContainer: {
+    alignItems: "center",
+    padding: theme.spacing.xl,
+  } as ViewStyle,
+  emptyText: {
+    fontSize: theme.typography.h3.fontSize,
+    fontWeight: theme.typography.h3.fontWeight,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.xs,
+  } as TextStyle,
+  emptySubtext: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.secondary,
+  } as TextStyle,
   footer: {
     padding: theme.spacing.lg,
     backgroundColor: theme.colors.surface,
@@ -112,3 +127,5 @@ const styles = StyleSheet.create({
     borderTopColor: theme.colors.border,
   } as ViewStyle,
 });
+
+export default ParentTasksScreen;

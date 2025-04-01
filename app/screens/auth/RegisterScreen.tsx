@@ -7,17 +7,18 @@ import {
   TouchableOpacity,
   ViewStyle,
   TextStyle,
+  Alert,
 } from "react-native";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { RouteProp } from "@react-navigation/native";
-import { AuthStackParamList } from "../../types/navigation";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
+import { useAuth } from "../../contexts/AuthContext";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AuthStackParamList } from "../../types/navigation";
 
-type RegisterScreenProps = {
-  navigation: NativeStackNavigationProp<AuthStackParamList, "Register">;
-  route: RouteProp<AuthStackParamList, "Register">;
-};
+type RegisterScreenProps = NativeStackScreenProps<
+  AuthStackParamList,
+  "Register"
+>;
 
 export default function RegisterScreen({
   navigation,
@@ -29,18 +30,28 @@ export default function RegisterScreen({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { signUp } = useAuth();
 
   const handleRegister = async () => {
-    if (password !== confirmPassword) {
-      // TODO: Show error message
+    if (!name || !email || !password || !confirmPassword) {
+      Alert.alert("Error", "Please fill in all fields");
       return;
     }
 
-    setIsLoading(true);
-    // TODO: Implement registration logic
-    setTimeout(() => {
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await signUp(name, email, password, userType);
+      // Navigation will be handled automatically by the auth context
+    } catch (error) {
+      Alert.alert("Error", "Failed to create account");
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -48,9 +59,7 @@ export default function RegisterScreen({
       <View style={styles.header}>
         <Text style={styles.title}>Create Account</Text>
         <Text style={styles.subtitle}>
-          {userType === "parent"
-            ? "Set up your parent account"
-            : "Set up your child account"}
+          Sign up as a {userType === "parent" ? "parent" : "child"}
         </Text>
       </View>
 
@@ -63,6 +72,7 @@ export default function RegisterScreen({
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
+            autoComplete="name"
           />
         </View>
 
@@ -75,6 +85,7 @@ export default function RegisterScreen({
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoComplete="email"
           />
         </View>
 
@@ -86,6 +97,8 @@ export default function RegisterScreen({
             value={password}
             onChangeText={setPassword}
             secureTextEntry
+            autoCapitalize="none"
+            autoComplete="new-password"
           />
         </View>
 
@@ -97,6 +110,8 @@ export default function RegisterScreen({
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
+            autoCapitalize="none"
+            autoComplete="new-password"
           />
         </View>
 
@@ -106,15 +121,13 @@ export default function RegisterScreen({
           loading={isLoading}
           fullWidth
         />
+      </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account?</Text>
-          <Button
-            title="Sign In"
-            variant="ghost"
-            onPress={() => navigation.navigate("Login")}
-          />
-        </View>
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>Already have an account?</Text>
+        <TouchableOpacity onPress={() => navigation.navigate("Login")}>
+          <Text style={styles.footerButton}>Sign In</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -129,21 +142,18 @@ const styles = StyleSheet.create({
   header: {
     marginTop: theme.spacing.xl * 2,
     marginBottom: theme.spacing.xl,
-    alignItems: "center",
   } as ViewStyle,
   title: {
     fontSize: theme.typography.h1.fontSize,
     fontWeight: theme.typography.h1.fontWeight,
     color: theme.colors.text.primary,
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   } as TextStyle,
   subtitle: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.body.fontWeight,
     color: theme.colors.text.secondary,
   } as TextStyle,
   form: {
-    flex: 1,
     gap: theme.spacing.md,
   } as ViewStyle,
   inputContainer: {
@@ -151,7 +161,6 @@ const styles = StyleSheet.create({
   } as ViewStyle,
   label: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: "600" as const,
     color: theme.colors.text.primary,
   } as TextStyle,
   input: {
@@ -163,14 +172,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
   } as TextStyle,
+  button: {
+    marginTop: theme.spacing.md,
+  } as ViewStyle,
   footer: {
-    marginTop: theme.spacing.xl,
+    flexDirection: "row",
+    justifyContent: "center",
     alignItems: "center",
+    marginTop: "auto",
+    gap: theme.spacing.xs,
   } as ViewStyle,
   footerText: {
     fontSize: theme.typography.body.fontSize,
-    fontWeight: theme.typography.body.fontWeight,
     color: theme.colors.text.secondary,
-    marginBottom: theme.spacing.sm,
+  } as TextStyle,
+  footerButton: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.primary,
+    fontWeight: theme.typography.body.fontWeight,
   } as TextStyle,
 });

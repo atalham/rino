@@ -1,6 +1,6 @@
 import React from "react";
 import { View, ActivityIndicator, StyleSheet, ViewStyle } from "react-native";
-import { theme } from "../../../app/theme";
+import { theme } from "../../app/theme";
 
 interface LoadingScreenProps {
   style?: ViewStyle;

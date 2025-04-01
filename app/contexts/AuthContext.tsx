@@ -1,13 +1,20 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from "firebase/auth";
+import { doc, setDoc, getDoc } from "firebase/firestore";
+import { auth, db } from "../config/firebase";
 
-type UserType = "parent" | "child";
-
-interface User {
+export interface User {
   id: string;
-  name: string;
+  uid: string;
   email: string;
-  type: UserType;
+  name: string;
+  userType: "parent" | "child";
 }
 
 interface AuthContextType {
@@ -15,10 +22,10 @@ interface AuthContextType {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (
-    name: string,
     email: string,
     password: string,
-    type: UserType
+    name: string,
+    userType: "parent" | "child"
   ) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -30,36 +37,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored authentication state
-    checkAuthState();
-  }, []);
-
-  const checkAuthState = async () => {
-    try {
-      const storedUser = await AsyncStorage.getItem("user");
-      if (storedUser) {
-        setUser(JSON.parse(storedUser));
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Get additional user data from Firestore
+        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+        if (userDoc.exists()) {
+          setUser(userDoc.data() as User);
+        }
+      } else {
+        setUser(null);
       }
-    } catch (error) {
-      console.error("Error checking auth state:", error);
-    } finally {
       setIsLoading(false);
-    }
-  };
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true);
-      // TODO: Implement actual authentication
-      // For now, we'll simulate a successful login
-      const mockUser: User = {
-        id: "1",
-        name: "Test User",
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
         email,
-        type: "parent",
-      };
-      await AsyncStorage.setItem("user", JSON.stringify(mockUser));
-      setUser(mockUser);
+        password
+      );
+      const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
+      if (userDoc.exists()) {
+        setUser(userDoc.data() as User);
+      }
     } catch (error) {
       console.error("Error signing in:", error);
       throw error;
@@ -69,23 +74,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (
-    name: string,
     email: string,
     password: string,
-    type: UserType
+    name: string,
+    userType: "parent" | "child"
   ) => {
     try {
       setIsLoading(true);
-      // TODO: Implement actual registration
-      // For now, we'll simulate a successful registration
-      const mockUser: User = {
-        id: "1",
-        name,
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
         email,
-        type,
+        password
+      );
+
+      // Create user document in Firestore
+      const userData: User = {
+        id: userCredential.user.uid,
+        uid: userCredential.user.uid,
+        email,
+        name,
+        userType,
       };
-      await AsyncStorage.setItem("user", JSON.stringify(mockUser));
-      setUser(mockUser);
+
+      await setDoc(doc(db, "users", userCredential.user.uid), userData);
+      setUser(userData);
     } catch (error) {
       console.error("Error signing up:", error);
       throw error;
@@ -97,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setIsLoading(true);
-      await AsyncStorage.removeItem("user");
+      await firebaseSignOut(auth);
       setUser(null);
     } catch (error) {
       console.error("Error signing out:", error);
@@ -108,7 +120,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signOut }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        isLoading,
+        signIn,
+        signUp,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
