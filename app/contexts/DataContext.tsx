@@ -105,56 +105,21 @@ export function DataProvider({
       return;
     }
 
-    // Subscribe to tasks
-    const tasksQuery = query(
-      collection(db, "tasks"),
-      where("parentId", "==", user.uid)
-    );
-    const tasksUnsubscribe = onSnapshot(tasksQuery, (snapshot) => {
-      const tasksData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-      })) as Task[];
-      setTasks(tasksData);
-    });
+    let tasksUnsubscribe: () => void;
+    let rewardsUnsubscribe: () => void;
+    let childrenUnsubscribe: () => void;
 
-    // Subscribe to rewards
-    const rewardsQuery = query(
-      collection(db, "rewards"),
-      where("parentId", "==", user.uid)
-    );
-    const rewardsUnsubscribe = onSnapshot(rewardsQuery, (snapshot) => {
-      const rewardsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-      })) as Reward[];
-      setRewards(rewardsData);
-    });
-
-    // Subscribe to child profiles
-    const childrenQuery = query(
-      collection(db, "childProfiles"),
-      where("parentId", "==", user.uid)
-    );
-    const childrenUnsubscribe = onSnapshot(childrenQuery, (snapshot) => {
-      const childrenData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-        lastPairedAt: doc.data().lastPairedAt?.toDate(),
-      })) as Child[];
-      setChildren(childrenData);
-    });
-
-    // Load parent data
+    // Load parent data first (needed for both roles)
     const loadParentData = async () => {
       try {
-        const parentDoc = await getDoc(doc(db, "parents", user.uid));
+        const parentId = user.userType === "parent" ? user.uid : user.parentId;
+        if (!parentId) {
+          console.error("No parent ID available");
+          setIsLoading(false);
+          return;
+        }
+
+        const parentDoc = await getDoc(doc(db, "parents", parentId));
         if (parentDoc.exists()) {
           setParent({
             id: parentDoc.id,
@@ -165,24 +130,108 @@ export function DataProvider({
         }
       } catch (error) {
         console.error("Error loading parent data:", error);
-      } finally {
-        setIsLoading(false);
       }
     };
 
-    loadParentData();
+    // Set up data subscriptions based on user type
+    if (user.userType === "parent") {
+      // Parent sees all their tasks
+      const tasksQuery = query(
+        collection(db, "tasks"),
+        where("parentId", "==", user.uid)
+      );
+      tasksUnsubscribe = onSnapshot(tasksQuery, (snapshot) => {
+        const tasksData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate(),
+        })) as Task[];
+        setTasks(tasksData);
+      });
+
+      // Parent sees all their rewards
+      const rewardsQuery = query(
+        collection(db, "rewards"),
+        where("parentId", "==", user.uid)
+      );
+      rewardsUnsubscribe = onSnapshot(rewardsQuery, (snapshot) => {
+        const rewardsData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate(),
+        })) as Reward[];
+        setRewards(rewardsData);
+      });
+
+      // Parent sees all their children
+      const childrenQuery = query(
+        collection(db, "childProfiles"),
+        where("parentId", "==", user.uid)
+      );
+      childrenUnsubscribe = onSnapshot(childrenQuery, (snapshot) => {
+        const childrenData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate(),
+          lastPairedAt: doc.data().lastPairedAt?.toDate(),
+        })) as Child[];
+        setChildren(childrenData);
+      });
+      // Load parent data and set loading state
+      loadParentData().finally(() => {
+        setIsLoading(false);
+      });
+    } else if (user.userType === "child") {
+      // Child sees only their assigned tasks
+      const tasksQuery = query(
+        collection(db, "tasks"),
+        where("assignedTo", "==", user.uid)
+      );
+      tasksUnsubscribe = onSnapshot(tasksQuery, (snapshot) => {
+        const tasksData = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate(),
+        })) as Task[];
+        setTasks(tasksData);
+      });
+
+      // Child sees their parent's rewards
+      if (user.parentId) {
+        const rewardsQuery = query(
+          collection(db, "rewards"),
+          where("parentId", "==", user.parentId)
+        );
+        rewardsUnsubscribe = onSnapshot(rewardsQuery, (snapshot) => {
+          const rewardsData = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+            createdAt: doc.data().createdAt?.toDate(),
+            updatedAt: doc.data().updatedAt?.toDate(),
+          })) as Reward[];
+          setRewards(rewardsData);
+        });
+      }
+    }
 
     return () => {
-      tasksUnsubscribe();
-      rewardsUnsubscribe();
-      childrenUnsubscribe();
+      tasksUnsubscribe?.();
+      rewardsUnsubscribe?.();
+      childrenUnsubscribe?.();
     };
   }, [user]);
 
+  // Modify task operations to check user type
   const addTask = async (
     task: Omit<Task, "id" | "createdAt" | "updatedAt">
   ) => {
-    if (!user) return;
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can create tasks");
+    }
 
     const newTask: Omit<Task, "id"> = {
       ...task,
@@ -199,6 +248,19 @@ export function DataProvider({
     if (!user) return;
 
     const taskRef = doc(db, "tasks", id);
+    const taskDoc = await getDoc(taskRef);
+
+    if (!taskDoc.exists()) {
+      throw new Error("Task not found");
+    }
+
+    const taskData = taskDoc.data() as Task;
+
+    // Only parent can update task details, child can only complete tasks
+    if (user.userType === "child" && taskData.assignedTo !== user.uid) {
+      throw new Error("Not authorized to update this task");
+    }
+
     await updateDoc(taskRef, {
       ...task,
       updatedAt: new Date(),
@@ -206,7 +268,9 @@ export function DataProvider({
   };
 
   const deleteTask = async (id: string) => {
-    if (!user) return;
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can delete tasks");
+    }
 
     const taskRef = doc(db, "tasks", id);
     await deleteDoc(taskRef);
@@ -216,16 +280,32 @@ export function DataProvider({
     if (!user) return;
 
     const taskRef = doc(db, "tasks", id);
+    const taskDoc = await getDoc(taskRef);
+
+    if (!taskDoc.exists()) {
+      throw new Error("Task not found");
+    }
+
+    const taskData = taskDoc.data() as Task;
+
+    // Only the assigned child can complete the task
+    if (user.userType === "child" && taskData.assignedTo !== user.uid) {
+      throw new Error("Not authorized to complete this task");
+    }
+
     await updateDoc(taskRef, {
       isCompleted: true,
       updatedAt: new Date(),
     });
   };
 
+  // Modify reward operations to check user type
   const addReward = async (
     reward: Omit<Reward, "id" | "createdAt" | "updatedAt">
   ) => {
-    if (!user) return;
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can create rewards");
+    }
 
     const newReward: Omit<Reward, "id"> = {
       ...reward,
@@ -239,7 +319,9 @@ export function DataProvider({
   };
 
   const updateReward = async (id: string, reward: Partial<Reward>) => {
-    if (!user) return;
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can update rewards");
+    }
 
     const rewardRef = doc(db, "rewards", id);
     await updateDoc(rewardRef, {
@@ -249,16 +331,33 @@ export function DataProvider({
   };
 
   const deleteReward = async (id: string) => {
-    if (!user) return;
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can delete rewards");
+    }
 
     const rewardRef = doc(db, "rewards", id);
     await deleteDoc(rewardRef);
   };
 
   const redeemReward = async (id: string) => {
-    if (!user) return;
+    if (!user || user.userType !== "child") {
+      throw new Error("Only children can redeem rewards");
+    }
 
     const rewardRef = doc(db, "rewards", id);
+    const rewardDoc = await getDoc(rewardRef);
+
+    if (!rewardDoc.exists()) {
+      throw new Error("Reward not found");
+    }
+
+    const rewardData = rewardDoc.data() as Reward;
+
+    // Only allow redeeming rewards from the child's parent
+    if (rewardData.parentId !== user.parentId) {
+      throw new Error("Not authorized to redeem this reward");
+    }
+
     await updateDoc(rewardRef, {
       isActive: false,
       updatedAt: new Date(),

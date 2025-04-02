@@ -29,6 +29,10 @@ service cloud.firestore {
       );
     }
 
+    function isAssignedToChild(childId) {
+      return resource.data.assignedTo == childId;
+    }
+
     // Parents collection
     match /parents/{parentId} {
       allow read: if isAuthenticated() && (request.auth.uid == parentId || isParent());
@@ -39,36 +43,50 @@ service cloud.firestore {
 
     // Child profiles collection
     match /childProfiles/{childId} {
-      // Allow querying by pairing code for anonymous users
-      allow list: if isAuthenticated() && (
-        request.query.limit <= 1
+      // Allow querying by pairing code
+      allow list: if true && (
+        request.query.limit <= 1 &&
+        request.query.filters.size() == 1 &&
+        request.query.filters[0].field == "pairingCode" &&
+        request.query.filters[0].op == "==" &&
+        request.query.filters[0].value != null &&
+        request.query.filters[0].value != ""
       );
       
-      allow read: if isAuthenticated() && (
-        request.auth.uid == resource.data.parentId || 
-        request.auth.uid == childId ||
-        hasValidDeviceId(childId)
+      // Allow querying by deviceId
+      allow list: if true && (
+        request.query.limit <= 1 &&
+        request.query.filters.size() == 1 &&
+        request.query.filters[0].field == "deviceId" &&
+        request.query.filters[0].op == "=="
       );
-      allow update: if isAuthenticated();
+      
+      allow read: if true;
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
+      allow update: if true && (
+        // Allow parent to update their child's profile
+        (isParent() && resource.data.parentId == request.auth.uid) ||
+        // Allow updating deviceId and pairingCode
+        (request.resource.data.deviceId != null && 
+         request.resource.data.pairingCode == null &&
+         resource.data.pairingCode != null)
+      );
       allow delete: if isParent() && 
         resource.data.parentId == request.auth.uid;
     }
 
     // Tasks collection
     match /tasks/{taskId} {
-      allow read: if isAuthenticated() && (
+      allow read: if true && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.childId == request.auth.uid ||
-        hasValidDeviceId(resource.data.childId)
+        isAssignedToChild(request.auth.uid)
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
-      allow update: if isAuthenticated() && (
+      allow update: if true && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.childId == request.auth.uid ||
-        hasValidDeviceId(resource.data.childId)
+        isAssignedToChild(request.auth.uid)
       );
       allow delete: if isParent() && 
         resource.data.parentId == request.auth.uid;
@@ -76,10 +94,9 @@ service cloud.firestore {
 
     // Rewards collection
     match /rewards/{rewardId} {
-      allow read: if isAuthenticated() && (
+      allow read: if true && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.childId == request.auth.uid ||
-        hasValidDeviceId(resource.data.childId)
+        isAssignedToChild(request.auth.uid)
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;

@@ -4,7 +4,6 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
-  User as FirebaseUser,
   signInAnonymously,
 } from "firebase/auth";
 import {
@@ -51,6 +50,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const DEVICE_ID_KEY = "@rino_device_id";
+const CHILD_PROFILE_KEY = "@rino_child_profile";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -83,6 +83,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return code;
   };
 
+  // Load child profile from storage on app start
+  useEffect(() => {
+    const loadChildProfile = async () => {
+      try {
+        const storedProfile = await AsyncStorage.getItem(CHILD_PROFILE_KEY);
+        if (storedProfile) {
+          const profile = JSON.parse(storedProfile);
+          setUser(profile);
+        }
+      } catch (error) {
+        console.error("Error loading child profile:", error);
+      }
+    };
+
+    loadChildProfile();
+  }, []);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
@@ -94,9 +111,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(userData);
           } else {
             // Check if user is a child
+            const deviceId = await getDeviceId();
             const childQuery = query(
               collection(db, "childProfiles"),
-              where("deviceId", "==", firebaseUser.uid),
+              where("deviceId", "==", deviceId),
               limit(1)
             );
             const childDocs = await getDocs(childQuery);
@@ -104,13 +122,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (!childDocs.empty) {
               const childData = childDocs.docs[0].data() as User;
               setUser(childData);
+              // Store child profile locally
+              await AsyncStorage.setItem(
+                CHILD_PROFILE_KEY,
+                JSON.stringify(childData)
+              );
             } else {
-              await firebaseSignOut(auth);
               setUser(null);
+              await AsyncStorage.removeItem(CHILD_PROFILE_KEY);
             }
           }
         } else {
-          setUser(null);
+          // When no Firebase user, check for stored child profile
+          const storedProfile = await AsyncStorage.getItem(CHILD_PROFILE_KEY);
+          if (storedProfile) {
+            const profile = JSON.parse(storedProfile);
+            setUser(profile);
+          } else {
+            setUser(null);
+          }
         }
       } catch (error) {
         console.error("Error in auth state change:", error);
@@ -211,85 +241,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
 
+      // Step 1: Get or generate device ID
       // Step 1: Sign in anonymously first
       const anonymousUserCredential = await signInAnonymously(auth);
-      console.log("anonymousUserCredential", anonymousUserCredential);
+
       const deviceId = anonymousUserCredential.user.uid;
-      console.log("deviceId", deviceId);
+
       // Step 2: Find child profile by pairing code
       const childrenQuery = query(
         collection(db, "childProfiles"),
         where("pairingCode", "==", pairingCode),
         limit(1)
       );
-      console.log("childrenQuery", childrenQuery);
+
       const childDocs = await getDocs(childrenQuery);
       if (childDocs.empty) {
-        await firebaseSignOut(auth);
         throw new Error("Invalid pairing code");
       }
-      console.log("childDocs", childDocs);
+
       const childDoc = childDocs.docs[0];
       const childData = childDoc.data() as ChildProfile;
-      console.log("childData", childData);
+
       // Step 3: Check if device is already paired with another profile
-      const deviceQuery = query(
-        collection(db, "childProfiles"),
-        where("deviceId", "==", deviceId),
-        limit(1)
-      );
-      console.log("deviceQuery", deviceQuery);
-      const deviceDocs = await getDocs(deviceQuery);
-      console.log("deviceDocs", deviceDocs);
-      if (!deviceDocs.empty) {
-        console.log("deviceDocs not empty");
-        await firebaseSignOut(auth);
-        throw new Error("This device is already paired with another profile");
-      }
-      console.log("deviceDocs empty");
+      // const deviceQuery = query(
+      //   collection(db, "childProfiles"),
+      //   where("deviceId", "==", deviceId),
+      //   limit(1)
+      // );
+
+      // const deviceDocs = await getDocs(deviceQuery);
+      // if (!deviceDocs.empty) {
+      //   throw new Error("This device is already paired with another profile");
+      // }
+
       // Step 4: Update the child profile with device info
-      try {
-        console.log("update23");
-        const childDocRef = doc(db, "childProfiles", childDoc.id);
-        console.log("childDocRef", childDocRef.id);
-        await setDoc(
-          childDocRef,
-          {
-            deviceId,
-            lastPairedAt: serverTimestamp(),
-            pairingCode: null,
-          },
-          { merge: true }
-        );
-        console.log("update");
-      } catch (error) {
-        console.log("Error updating child profile:", error);
-      }
-      console.log("updatedChildDoc");
-      // Step 5: Set the user state with the updated data
+      await updateDoc(childDoc.ref, {
+        deviceId,
+        lastPairedAt: serverTimestamp(),
+        pairingCode: null,
+      });
+
+      // Step 5: Set the user state and store locally
       const updatedUserData = {
         ...childData,
         deviceId,
         lastPairedAt: new Date(),
       };
-      console.log("updatedUserData1", updatedUserData);
-      // Step 6: Wait for auth state to update
-      await new Promise<void>((resolve) => {
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-          if (firebaseUser) {
-            setUser(updatedUserData);
-            unsubscribe();
-            resolve();
-          }
-        });
-      });
-      console.log("updatedUserData2", updatedUserData);
+      setUser(updatedUserData);
+      await AsyncStorage.setItem(
+        CHILD_PROFILE_KEY,
+        JSON.stringify(updatedUserData)
+      );
     } catch (error) {
       console.error("Error pairing child profile:", error);
-      await firebaseSignOut(auth);
       throw error;
     } finally {
-      console.log("finally");
       setIsLoading(false);
     }
   };
@@ -299,6 +305,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(true);
       await firebaseSignOut(auth);
       setUser(null);
+      await AsyncStorage.removeItem(CHILD_PROFILE_KEY);
     } catch (error) {
       console.error("Error signing out:", error);
       throw error;
