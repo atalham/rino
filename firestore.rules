@@ -17,6 +17,18 @@ service cloud.firestore {
         get(/databases/$(database)/documents/childProfiles/$(request.auth.uid)).data != null;
     }
 
+    function hasValidDeviceId(childId) {
+      let childData = get(/databases/$(database)/documents/childProfiles/$(childId)).data;
+      return childData != null && childData.deviceId == request.auth.uid;
+    }
+
+    function isChildOwner(childId) {
+      return isAuthenticated() && (
+        request.auth.uid == childId ||
+        hasValidDeviceId(childId)
+      );
+    }
+
     // Parents collection
     match /parents/{parentId} {
       allow read: if isAuthenticated() && (request.auth.uid == parentId || isParent());
@@ -27,14 +39,19 @@ service cloud.firestore {
 
     // Child profiles collection
     match /childProfiles/{childId} {
+      // Allow querying by pairing code for anonymous users
+      allow list: if isAuthenticated() && (
+        request.query.limit <= 1
+      );
+      
       allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.parentId || 
-        request.auth.uid == childId
+        request.auth.uid == childId ||
+        hasValidDeviceId(childId)
       );
+      allow update: if isAuthenticated();
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
-      allow update: if isParent() && 
-        resource.data.parentId == request.auth.uid;
       allow delete: if isParent() && 
         resource.data.parentId == request.auth.uid;
     }
@@ -43,13 +60,15 @@ service cloud.firestore {
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.childId == request.auth.uid
+        resource.data.childId == request.auth.uid ||
+        hasValidDeviceId(resource.data.childId)
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
       allow update: if isAuthenticated() && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.childId == request.auth.uid
+        resource.data.childId == request.auth.uid ||
+        hasValidDeviceId(resource.data.childId)
       );
       allow delete: if isParent() && 
         resource.data.parentId == request.auth.uid;
@@ -59,7 +78,8 @@ service cloud.firestore {
     match /rewards/{rewardId} {
       allow read: if isAuthenticated() && (
         resource.data.parentId == request.auth.uid ||
-        resource.data.childId == request.auth.uid
+        resource.data.childId == request.auth.uid ||
+        hasValidDeviceId(resource.data.childId)
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;

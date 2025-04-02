@@ -8,48 +8,49 @@ import {
   TextStyle,
   Alert,
   ScrollView,
+  TouchableOpacity,
 } from "react-native";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
 import { useData } from "../../contexts/DataContext";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../types/navigation";
+import { useAuth } from "../../contexts/AuthContext";
 
-type CreateChildScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, "CreateChild">;
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList, "ProfileForm">;
 };
 
-export default function CreateChildScreen({
-  navigation,
-}: CreateChildScreenProps) {
+export default function CreateChildScreen({ navigation }: Props) {
   const [name, setName] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const { createChildProfile } = useData();
+  const [isCreating, setIsCreating] = useState(false);
+  const { createChildProfile } = useAuth();
 
   const handleCreateChild = async () => {
     if (!name.trim()) {
-      Alert.alert("Error", "Please enter your child's name");
+      Alert.alert("Error", "Please enter a name for your child");
       return;
     }
 
     try {
-      setIsLoading(true);
-      const child = await createChildProfile(name.trim());
+      setIsCreating(true);
+      const childProfile = await createChildProfile(name.trim());
+
       Alert.alert(
-        "Success",
-        "Child profile created! Share the pairing code with your child to connect their profile.",
+        "Child Profile Created",
+        `Your child's pairing code is: ${childProfile.pairingCode}\n\nShare this code with your child to pair their device.`,
         [
           {
             text: "OK",
-            onPress: () => navigation.goBack(),
+            onPress: () => navigation.navigate("ProfileForm"),
           },
         ]
       );
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error creating child profile:", error);
       Alert.alert("Error", "Failed to create child profile. Please try again.");
     } finally {
-      setIsLoading(false);
+      setIsCreating(false);
     }
   };
 
@@ -59,7 +60,7 @@ export default function CreateChildScreen({
         <View style={styles.header}>
           <Text style={styles.title}>Create Child Profile</Text>
           <Text style={styles.subtitle}>
-            Add a new child to manage their tasks and rewards
+            Enter your child's name to create their profile
           </Text>
         </View>
 
@@ -76,12 +77,15 @@ export default function CreateChildScreen({
             />
           </View>
 
-          <Button
-            title="Create Profile"
+          <TouchableOpacity
+            style={[styles.button, isCreating && styles.buttonDisabled]}
             onPress={handleCreateChild}
-            loading={isLoading}
-            fullWidth
-          />
+            disabled={isCreating}
+          >
+            <Text style={styles.buttonText}>
+              {isCreating ? "Creating..." : "Create Profile"}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     </ScrollView>
@@ -128,5 +132,19 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     borderWidth: 1,
     borderColor: theme.colors.border,
+  } as TextStyle,
+  button: {
+    backgroundColor: "#007AFF",
+    padding: 15,
+    borderRadius: 8,
+    alignItems: "center",
+  } as ViewStyle,
+  buttonDisabled: {
+    backgroundColor: "#999",
+  } as ViewStyle,
+  buttonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   } as TextStyle,
 });
