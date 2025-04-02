@@ -2,6 +2,8 @@ export type RootStackParamList = {
   Auth: undefined;
   ParentMain: undefined;
   ChildMain: undefined;
+  CreateChild: undefined;
+  ProfileForm: undefined;
 };
 
 export type ParentTabParamList = {
@@ -20,4 +22,5 @@ export type AuthStackParamList = {
   Login: undefined;
   Register: { userType: "parent" };
   UserType: undefined;
+  PairProfile: undefined;
 };

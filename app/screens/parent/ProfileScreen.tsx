@@ -11,26 +11,43 @@ import {
   Alert,
   ImageStyle,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
 import { useData } from "../../contexts/DataContext";
 import { LoadingScreen } from "../../components/ui/LoadingScreen";
 import { useAuth } from "../../contexts/AuthContext";
+import { Child } from "../../contexts/DataContext";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RootStackParamList } from "../../types/navigation";
 
-export default function ParentProfileScreen() {
-  const router = useRouter();
+type ParentProfileScreenProps = {
+  navigation: NativeStackNavigationProp<
+    RootStackParamList,
+    "ParentMain" | "ProfileForm" | "CreateChild"
+  >;
+};
+
+export default function ParentProfileScreen({
+  navigation,
+}: ParentProfileScreenProps) {
   const { signOut } = useAuth();
-  const { parent, tasks, rewards, isLoading } = useData();
+  const { parent, tasks, rewards, isLoading, children } = useData();
 
   const handleEditProfile = () => {
-    router.push("/parent/profile/edit");
+    navigation.navigate("ProfileForm");
+  };
+
+  const handleCreateChild = () => {
+    navigation.navigate("CreateChild");
   };
 
   const handleSignOut = async () => {
     try {
       await signOut();
-      router.replace("/");
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "Auth" }],
+      });
     } catch (error) {
       Alert.alert("Error", "Failed to sign out. Please try again.");
     }
@@ -75,6 +92,28 @@ export default function ParentProfileScreen() {
             <Text style={styles.statValue}>{activeRewards}</Text>
             <Text style={styles.statLabel}>Active Rewards</Text>
           </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Child Profiles</Text>
+          {children && children.length > 0 ? (
+            children.map((child: Child) => (
+              <View key={child.id} style={styles.childCard}>
+                <Text style={styles.childName}>{child.name}</Text>
+                <Text style={styles.childStatus}>
+                  {child.deviceId ? "Paired" : "Not Paired"}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyText}>No child profiles yet</Text>
+          )}
+          <Button
+            title="Create Child Profile"
+            onPress={handleCreateChild}
+            variant="secondary"
+            fullWidth
+          />
         </View>
 
         <View style={styles.section}>
@@ -173,6 +212,28 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.h3.fontSize,
     fontWeight: theme.typography.h3.fontWeight,
     color: theme.colors.text.primary,
+    marginBottom: theme.spacing.md,
+  } as TextStyle,
+  childCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    padding: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+    ...theme.shadows.sm,
+  } as ViewStyle,
+  childName: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.primary,
+    marginBottom: theme.spacing.xs,
+  } as TextStyle,
+  childStatus: {
+    fontSize: theme.typography.caption.fontSize,
+    color: theme.colors.text.secondary,
+  } as TextStyle,
+  emptyText: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.secondary,
+    textAlign: "center",
     marginBottom: theme.spacing.md,
   } as TextStyle,
   infoCard: {

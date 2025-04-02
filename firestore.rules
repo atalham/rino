@@ -1,0 +1,72 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isParent() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/parents/$(request.auth.uid)).data != null;
+    }
+    
+    function isChild() {
+      return isAuthenticated() && 
+        get(/databases/$(database)/documents/childProfiles/$(request.auth.uid)).data != null;
+    }
+
+    // Parents collection
+    match /parents/{parentId} {
+      allow read: if isAuthenticated() && (request.auth.uid == parentId || isParent());
+      allow create: if isAuthenticated() && request.auth.uid == parentId;
+      allow update: if isAuthenticated() && request.auth.uid == parentId;
+      allow delete: if isAuthenticated() && request.auth.uid == parentId;
+    }
+
+    // Child profiles collection
+    match /childProfiles/{childId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.parentId || 
+        request.auth.uid == childId
+      );
+      allow create: if isParent() && 
+        request.resource.data.parentId == request.auth.uid;
+      allow update: if isParent() && 
+        resource.data.parentId == request.auth.uid;
+      allow delete: if isParent() && 
+        resource.data.parentId == request.auth.uid;
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read: if isAuthenticated() && (
+        resource.data.parentId == request.auth.uid ||
+        resource.data.childId == request.auth.uid
+      );
+      allow create: if isParent() && 
+        request.resource.data.parentId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        resource.data.parentId == request.auth.uid ||
+        resource.data.childId == request.auth.uid
+      );
+      allow delete: if isParent() && 
+        resource.data.parentId == request.auth.uid;
+    }
+
+    // Rewards collection
+    match /rewards/{rewardId} {
+      allow read: if isAuthenticated() && (
+        resource.data.parentId == request.auth.uid ||
+        resource.data.childId == request.auth.uid
+      );
+      allow create: if isParent() && 
+        request.resource.data.parentId == request.auth.uid;
+      allow update: if isParent() && 
+        resource.data.parentId == request.auth.uid;
+      allow delete: if isParent() && 
+        resource.data.parentId == request.auth.uid;
+    }
+  }
+} 

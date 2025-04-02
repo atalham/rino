@@ -12,15 +12,24 @@ import {
   Image,
   ImageStyle,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { theme } from "../../theme";
 import { Button } from "../../../components/ui/Button";
 import { useData } from "../../contexts/DataContext";
 import { LoadingScreen } from "../../components/ui/LoadingScreen";
 import { Parent } from "../../contexts/DataContext";
+import { RootStackParamList } from "../../types/navigation";
 
-export default function ParentProfileFormScreen() {
-  const router = useRouter();
+type ProfileFormScreenProps = {
+  navigation: NativeStackNavigationProp<
+    RootStackParamList,
+    "ProfileForm" | "ParentMain"
+  >;
+};
+
+export default function ParentProfileFormScreen({
+  navigation,
+}: ProfileFormScreenProps) {
   const { parent, updateParent, isLoading } = useData();
   const [formData, setFormData] = useState<Partial<Parent>>({
     name: "",
@@ -62,7 +71,7 @@ export default function ParentProfileFormScreen() {
         email,
         phone,
       } as Parent);
-      router.back();
+      navigation.goBack();
     } catch (error) {
       Alert.alert("Error", "Failed to update profile. Please try again.");
     }
@@ -132,7 +141,7 @@ export default function ParentProfileFormScreen() {
         <View style={styles.actions}>
           <Button
             title="Cancel"
-            onPress={() => router.back()}
+            onPress={() => navigation.goBack()}
             variant="secondary"
             fullWidth
           />

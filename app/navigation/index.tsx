@@ -21,6 +21,9 @@ import ParentProfileScreen from "../screens/parent/ProfileScreen";
 import ChildTasksScreen from "../screens/child/TasksScreen";
 import ChildShopScreen from "../screens/child/ShopScreen";
 import ChildProfileScreen from "../screens/child/ProfileScreen";
+import CreateChildScreen from "../screens/parent/CreateChildScreen";
+import PairProfileScreen from "../screens/child/PairProfileScreen";
+import ProfileFormScreen from "../screens/parent/ProfileFormScreen";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -117,6 +120,7 @@ const AuthNavigator = () => {
       <AuthStack.Screen name="UserType" component={UserTypeScreen} />
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
+      <AuthStack.Screen name="PairProfile" component={PairProfileScreen} />
     </AuthStack.Navigator>
   );
 };
@@ -137,7 +141,11 @@ export const Navigation = () => {
       {!user ? (
         <Stack.Screen name="Auth" component={AuthNavigator} />
       ) : user.userType === "parent" ? (
-        <Stack.Screen name="ParentMain" component={ParentNavigator} />
+        <>
+          <Stack.Screen name="ParentMain" component={ParentNavigator} />
+          <Stack.Screen name="CreateChild" component={CreateChildScreen} />
+          <Stack.Screen name="ProfileForm" component={ProfileFormScreen} />
+        </>
       ) : (
         <Stack.Screen name="ChildMain" component={ChildNavigator} />
       )}

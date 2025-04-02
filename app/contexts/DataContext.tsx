@@ -10,6 +10,7 @@ import {
   query,
   where,
   onSnapshot,
+  addDoc,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { useAuth } from "./AuthContext";
@@ -22,6 +23,7 @@ export interface Task {
   isCompleted: boolean;
   dueDate?: Date;
   assignedTo?: string; // childId
+  parentId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +34,7 @@ export interface Reward {
   description: string;
   cost: number;
   isActive: boolean;
+  parentId: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,10 +49,21 @@ export interface Parent {
   updatedAt: Date;
 }
 
+export interface Child {
+  id: string;
+  name: string;
+  parentId: string;
+  deviceId?: string;
+  lastPairedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 interface DataContextType {
   tasks: Task[];
   rewards: Reward[];
   parent: Parent | null;
+  children: Child[];
   isLoading: boolean;
   addTask: (
     task: Omit<Task, "id" | "createdAt" | "updatedAt">
@@ -64,15 +78,21 @@ interface DataContextType {
   deleteReward: (id: string) => Promise<void>;
   redeemReward: (id: string) => Promise<void>;
   updateParent: (parent: Partial<Parent>) => Promise<void>;
+  createChildProfile: (name: string) => Promise<Child>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
-export function DataProvider({ children }: { children: React.ReactNode }) {
+export function DataProvider({
+  children: providerChildren,
+}: {
+  children: React.ReactNode;
+}) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [parent, setParent] = useState<Parent | null>(null);
+  const [children, setChildren] = useState<Child[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -80,12 +100,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setTasks([]);
       setRewards([]);
       setParent(null);
+      setChildren([]);
       setIsLoading(false);
       return;
     }
 
     // Subscribe to tasks
-    const tasksQuery = query(collection(db, "parents", user.uid, "tasks"));
+    const tasksQuery = query(
+      collection(db, "tasks"),
+      where("parentId", "==", user.uid)
+    );
     const tasksUnsubscribe = onSnapshot(tasksQuery, (snapshot) => {
       const tasksData = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -97,7 +121,10 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Subscribe to rewards
-    const rewardsQuery = query(collection(db, "parents", user.uid, "rewards"));
+    const rewardsQuery = query(
+      collection(db, "rewards"),
+      where("parentId", "==", user.uid)
+    );
     const rewardsUnsubscribe = onSnapshot(rewardsQuery, (snapshot) => {
       const rewardsData = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -106,6 +133,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         updatedAt: doc.data().updatedAt?.toDate(),
       })) as Reward[];
       setRewards(rewardsData);
+    });
+
+    // Subscribe to child profiles
+    const childrenQuery = query(
+      collection(db, "childProfiles"),
+      where("parentId", "==", user.uid)
+    );
+    const childrenUnsubscribe = onSnapshot(childrenQuery, (snapshot) => {
+      const childrenData = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate(),
+        lastPairedAt: doc.data().lastPairedAt?.toDate(),
+      })) as Child[];
+      setChildren(childrenData);
     });
 
     // Load parent data
@@ -132,6 +175,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       tasksUnsubscribe();
       rewardsUnsubscribe();
+      childrenUnsubscribe();
     };
   }, [user]);
 
@@ -142,18 +186,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const newTask: Omit<Task, "id"> = {
       ...task,
+      parentId: user.uid,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    const docRef = doc(collection(db, "parents", user.uid, "tasks"));
+    const docRef = doc(collection(db, "tasks"));
     await setDoc(docRef, newTask);
   };
 
   const updateTask = async (id: string, task: Partial<Task>) => {
     if (!user) return;
 
-    const taskRef = doc(db, "parents", user.uid, "tasks", id);
+    const taskRef = doc(db, "tasks", id);
     await updateDoc(taskRef, {
       ...task,
       updatedAt: new Date(),
@@ -163,14 +208,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = async (id: string) => {
     if (!user) return;
 
-    const taskRef = doc(db, "parents", user.uid, "tasks", id);
+    const taskRef = doc(db, "tasks", id);
     await deleteDoc(taskRef);
   };
 
   const completeTask = async (id: string) => {
     if (!user) return;
 
-    const taskRef = doc(db, "parents", user.uid, "tasks", id);
+    const taskRef = doc(db, "tasks", id);
     await updateDoc(taskRef, {
       isCompleted: true,
       updatedAt: new Date(),
@@ -184,18 +229,19 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     const newReward: Omit<Reward, "id"> = {
       ...reward,
+      parentId: user.uid,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
 
-    const docRef = doc(collection(db, "parents", user.uid, "rewards"));
+    const docRef = doc(collection(db, "rewards"));
     await setDoc(docRef, newReward);
   };
 
   const updateReward = async (id: string, reward: Partial<Reward>) => {
     if (!user) return;
 
-    const rewardRef = doc(db, "parents", user.uid, "rewards", id);
+    const rewardRef = doc(db, "rewards", id);
     await updateDoc(rewardRef, {
       ...reward,
       updatedAt: new Date(),
@@ -205,14 +251,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const deleteReward = async (id: string) => {
     if (!user) return;
 
-    const rewardRef = doc(db, "parents", user.uid, "rewards", id);
+    const rewardRef = doc(db, "rewards", id);
     await deleteDoc(rewardRef);
   };
 
   const redeemReward = async (id: string) => {
     if (!user) return;
 
-    const rewardRef = doc(db, "parents", user.uid, "rewards", id);
+    const rewardRef = doc(db, "rewards", id);
     await updateDoc(rewardRef, {
       isActive: false,
       updatedAt: new Date(),
@@ -246,25 +292,44 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const createChildProfile = async (name: string): Promise<Child> => {
+    if (!user) throw new Error("User not authenticated");
+
+    const newChild: Omit<Child, "id"> = {
+      name,
+      parentId: user.uid,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const docRef = await addDoc(collection(db, "childProfiles"), newChild);
+    return {
+      id: docRef.id,
+      ...newChild,
+    };
+  };
+
+  const value = {
+    tasks,
+    rewards,
+    parent,
+    children,
+    isLoading,
+    addTask,
+    updateTask,
+    deleteTask,
+    completeTask,
+    addReward,
+    updateReward,
+    deleteReward,
+    redeemReward,
+    updateParent,
+    createChildProfile,
+  };
+
   return (
-    <DataContext.Provider
-      value={{
-        tasks,
-        rewards,
-        parent,
-        isLoading,
-        addTask,
-        updateTask,
-        deleteTask,
-        completeTask,
-        addReward,
-        updateReward,
-        deleteReward,
-        redeemReward,
-        updateParent,
-      }}
-    >
-      {children}
+    <DataContext.Provider value={value}>
+      {providerChildren}
     </DataContext.Provider>
   );
 }

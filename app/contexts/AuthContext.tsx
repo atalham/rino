@@ -14,57 +14,83 @@ import {
   query,
   where,
   getDocs,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { auth, db } from "../config/firebase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export interface User {
   id: string;
   uid: string;
-  email?: string; // Optional since child profiles won't have email
+  email?: string;
   name: string;
   userType: "parent" | "child";
-  parentId?: string; // For child profiles
-  pairingCode?: string; // For parent profiles
+  parentId?: string;
+  pairingCode?: string;
+  deviceId?: string;
+  lastPairedAt?: Date;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, name: string) => Promise<void>;
+  signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   createChildProfile: (name: string) => Promise<string>;
   pairChildProfile: (pairingCode: string) => Promise<void>;
+  getDeviceId: () => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const DEVICE_ID_KEY = "@rino_device_id";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const getDeviceId = async (): Promise<string> => {
+    try {
+      let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+      if (!deviceId) {
+        // Generate a unique device ID using timestamp and random string
+        deviceId = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2, 15)}`;
+        await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+      }
+      return deviceId;
+    } catch (error) {
+      console.error("Error getting device ID:", error);
+      throw error;
+    }
+  };
+
+  const generatePairingCode = () => {
+    // Generate a 6-character code using uppercase letters and numbers
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
-          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          const userDoc = await getDoc(doc(db, "parents", firebaseUser.uid));
 
           if (!userDoc.exists()) {
-            // If user document doesn't exist, sign out
             await firebaseSignOut(auth);
             setUser(null);
             return;
           }
 
           const userData = userDoc.data() as User;
-
-          // Only allow parent accounts to be authenticated
-          if (userData.userType !== "parent") {
-            await firebaseSignOut(auth);
-            setUser(null);
-            return;
-          }
-
           setUser(userData);
         } else {
           setUser(null);
@@ -89,23 +115,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         password
       );
 
-      // Get user data from Firestore
-      const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
+      const userDoc = await getDoc(doc(db, "parents", userCredential.user.uid));
 
       if (!userDoc.exists()) {
-        // If user document doesn't exist, sign out and throw error
         await firebaseSignOut(auth);
         throw new Error("User data not found");
       }
 
       const userData = userDoc.data() as User;
-
-      // Only allow parent accounts to sign in through this method
-      if (userData.userType !== "parent") {
-        await firebaseSignOut(auth);
-        throw new Error("Only parent accounts can sign in with email/password");
-      }
-
       setUser(userData);
     } catch (error) {
       console.error("Error signing in:", error);
@@ -125,12 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
 
       // Generate a unique pairing code for the parent
-      const pairingCode = Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase();
+      const pairingCode = generatePairingCode();
 
-      // Create user document in Firestore
+      // Create parent document in Firestore
       const userData: User = {
         id: userCredential.user.uid,
         uid: userCredential.user.uid,
@@ -140,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         pairingCode,
       };
 
-      await setDoc(doc(db, "users", userCredential.user.uid), userData);
+      await setDoc(doc(db, "parents", userCredential.user.uid), userData);
       setUser(userData);
     } catch (error) {
       console.error("Error signing up:", error);
@@ -158,13 +172,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       // Create a new child profile document
-      const childRef = doc(collection(db, "users"));
+      const childRef = doc(collection(db, "childProfiles"));
+      const pairingCode = generatePairingCode();
+
       const childData: User = {
         id: childRef.id,
         uid: childRef.id,
         name,
         userType: "child",
         parentId: user.id,
+        pairingCode,
       };
 
       await setDoc(childRef, childData);
@@ -178,33 +195,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const pairChildProfile = async (pairingCode: string) => {
-    if (!user || user.userType !== "child") {
-      throw new Error("Only child profiles can be paired");
-    }
-
     try {
       setIsLoading(true);
-      // Find parent by pairing code
-      const parentsQuery = query(
-        collection(db, "users"),
-        where("pairingCode", "==", pairingCode),
-        where("userType", "==", "parent")
-      );
-      const parentDocs = await getDocs(parentsQuery);
+      const deviceId = await getDeviceId();
 
-      if (parentDocs.empty) {
+      // Find child profile by pairing code
+      const childrenQuery = query(
+        collection(db, "childProfiles"),
+        where("pairingCode", "==", pairingCode)
+      );
+      const childDocs = await getDocs(childrenQuery);
+
+      if (childDocs.empty) {
         throw new Error("Invalid pairing code");
       }
 
-      const parentDoc = parentDocs.docs[0];
-      const parentId = parentDoc.id;
+      const childDoc = childDocs.docs[0];
+      const childData = childDoc.data() as User;
 
-      // Update child profile with parent ID
-      const childRef = doc(db, "users", user.id);
-      await setDoc(childRef, { parentId }, { merge: true });
+      // Check if device is already paired with another profile
+      const deviceQuery = query(
+        collection(db, "childProfiles"),
+        where("deviceId", "==", deviceId)
+      );
+      const deviceDocs = await getDocs(deviceQuery);
 
-      // Update user state
-      setUser({ ...user, parentId });
+      if (!deviceDocs.empty) {
+        throw new Error("This device is already paired with another profile");
+      }
+
+      // Update child profile with device ID and pairing timestamp
+      await updateDoc(childDoc.ref, {
+        deviceId,
+        lastPairedAt: serverTimestamp(),
+        pairingCode: null, // Clear the pairing code after successful pairing
+      });
+
+      setUser(childData);
     } catch (error) {
       console.error("Error pairing child profile:", error);
       throw error;
@@ -226,21 +253,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        signIn,
-        signUp,
-        signOut,
-        createChildProfile,
-        pairChildProfile,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = {
+    user,
+    isLoading,
+    signIn,
+    signUp,
+    signOut,
+    createChildProfile,
+    pairChildProfile,
+    getDeviceId,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
