@@ -11,11 +11,6 @@ service cloud.firestore {
       return isAuthenticated() && 
         get(/databases/$(database)/documents/parents/$(request.auth.uid)).data != null;
     }
-    
-    function isChild() {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/childProfiles/$(request.auth.uid)).data != null;
-    }
 
     function hasValidDeviceId(childId) {
       let childData = get(/databases/$(database)/documents/childProfiles/$(childId)).data;
@@ -33,9 +28,14 @@ service cloud.firestore {
       return resource.data.assignedTo == childId;
     }
 
+    function isChildOfParent(parentId) {
+      return isChild() && 
+        get(/databases/$(database)/documents/childProfiles/$(request.auth.uid)).data.parentId == parentId;
+    }
+
     // Parents collection
     match /parents/{parentId} {
-      allow read: if isAuthenticated() && (request.auth.uid == parentId || isParent());
+      allow read: if isAuthenticated() && (request.auth.uid == parentId || isParent() || isChildOfParent(parentId));
       allow create: if isAuthenticated() && request.auth.uid == parentId;
       allow update: if isAuthenticated() && request.auth.uid == parentId;
       allow delete: if isAuthenticated() && request.auth.uid == parentId;
@@ -61,7 +61,10 @@ service cloud.firestore {
         request.query.filters[0].op == "=="
       );
       
-      allow read: if true;
+      allow read: if true && (
+        request.auth.uid == resource.data.parentId ||
+        request.auth.uid == resource.data.deviceId
+      );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
       allow update: if true && (
@@ -78,15 +81,18 @@ service cloud.firestore {
 
     // Tasks collection
     match /tasks/{taskId} {
-      allow read: if true && (
-        resource.data.parentId == request.auth.uid ||
-        isAssignedToChild(request.auth.uid)
+      allow read: if isAuthenticated() && (
+        request.auth.uid == get(/databases/$(database)/documents/childProfiles/$(resource.data.assignedTo)).data.deviceId
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
-      allow update: if true && (
-        resource.data.parentId == request.auth.uid ||
-        isAssignedToChild(request.auth.uid)
+      allow update: if isAuthenticated() && (
+        // Parent can update their own tasks
+        (isParent() && resource.data.parentId == request.auth.uid) ||
+        // Child can only complete their assigned tasks
+        (isChild() && 
+         resource.data.assignedTo == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCompleted', 'updatedAt']))
       );
       allow delete: if isParent() && 
         resource.data.parentId == request.auth.uid;
@@ -94,14 +100,22 @@ service cloud.firestore {
 
     // Rewards collection
     match /rewards/{rewardId} {
-      allow read: if true && (
-        resource.data.parentId == request.auth.uid ||
-        isAssignedToChild(request.auth.uid)
+      allow read: if isAuthenticated() && (
+        // Parent can read their own rewards
+        (isParent() && resource.data.parentId == request.auth.uid) ||
+        // Child can read their parent's rewards
+        (isChild() && request.query.filter[0].field == "parentId")
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
-      allow update: if isParent() && 
-        resource.data.parentId == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        // Parent can update their own rewards
+        (isParent() && resource.data.parentId == request.auth.uid) ||
+        // Child can only redeem their parent's rewards
+        (isChild() && 
+         resource.data.parentId == get(/databases/$(database)/documents/childProfiles/$(request.auth.uid)).data.parentId &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isActive', 'updatedAt']))
+      );
       allow delete: if isParent() && 
         resource.data.parentId == request.auth.uid;
     }

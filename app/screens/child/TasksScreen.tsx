@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -9,66 +9,31 @@ import {
 } from "react-native";
 import { theme } from "../../theme";
 import { TaskCard } from "../../../components/TaskCard";
-
-// Temporary mock data
-const mockTasks = [
-  {
-    id: "1",
-    title: "Clean Room",
-    description: "Make bed, vacuum, and organize toys",
-    reward: 50,
-    isCompleted: false,
-    dueDate: "2024-03-31",
-  },
-  {
-    id: "2",
-    title: "Do Homework",
-    description: "Complete math worksheet and reading assignment",
-    reward: 75,
-    isCompleted: true,
-    dueDate: "2024-03-30",
-  },
-  {
-    id: "3",
-    title: "Practice Piano",
-    description: "Practice for 30 minutes",
-    reward: 40,
-    isCompleted: false,
-    dueDate: "2024-03-31",
-  },
-];
+import { useData } from "../../contexts/DataContext";
+import { LoadingScreen } from "../../components/ui/LoadingScreen";
 
 export default function ChildTasksScreen() {
-  const [tasks, setTasks] = useState(mockTasks);
+  const { tasks, isLoading, completeTask } = useData();
 
   const handleTaskPress = (taskId: string) => {
     // TODO: Navigate to task details
   };
 
-  const handleTaskComplete = (taskId: string) => {
-    setTasks(
-      tasks.map((task) =>
-        task.id === taskId ? { ...task, isCompleted: true } : task
-      )
-    );
-    // TODO: Implement task completion logic
+  const handleTaskComplete = async (taskId: string) => {
+    try {
+      await completeTask(taskId);
+    } catch (error) {
+      console.error("Failed to complete task:", error);
+    }
   };
 
-  const renderTask = ({ item }: { item: (typeof mockTasks)[0] }) => (
-    <TaskCard
-      title={item.title}
-      description={item.description}
-      reward={item.reward}
-      isCompleted={item.isCompleted}
-      onPress={() => handleTaskPress(item.id)}
-      onComplete={() => handleTaskComplete(item.id)}
-      isChildView={true}
-    />
-  );
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
 
   const completedTasks = tasks.filter((task) => task.isCompleted).length;
   const totalTasks = tasks.length;
-  const progress = (completedTasks / totalTasks) * 100;
+  const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
   return (
     <View style={styles.container}>
@@ -86,9 +51,24 @@ export default function ChildTasksScreen() {
 
       <FlatList
         data={tasks}
-        renderItem={renderTask}
+        renderItem={({ item }) => (
+          <TaskCard
+            title={item.title}
+            description={item.description}
+            reward={item.reward}
+            isCompleted={item.isCompleted}
+            onPress={() => handleTaskPress(item.id)}
+            onComplete={() => handleTaskComplete(item.id)}
+            isChildView={true}
+          />
+        )}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No tasks assigned yet</Text>
+          </View>
+        }
       />
     </View>
   );
@@ -132,4 +112,13 @@ const styles = StyleSheet.create({
   list: {
     padding: theme.spacing.lg,
   } as ViewStyle,
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  } as ViewStyle,
+  emptyText: {
+    fontSize: theme.typography.body.fontSize,
+    color: theme.colors.text.secondary,
+  } as TextStyle,
 });

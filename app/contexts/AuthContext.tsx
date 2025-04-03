@@ -44,7 +44,6 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   createChildProfile: (name: string) => Promise<ChildProfile>;
   pairChildProfile: (pairingCode: string) => Promise<void>;
-  getDeviceId: () => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,23 +54,6 @@ const CHILD_PROFILE_KEY = "@rino_child_profile";
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-
-  const getDeviceId = async (): Promise<string> => {
-    try {
-      let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
-      if (!deviceId) {
-        // Generate a unique device ID using timestamp and random string
-        deviceId = `${Date.now()}-${Math.random()
-          .toString(36)
-          .substring(2, 15)}`;
-        await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
-      }
-      return deviceId;
-    } catch (error) {
-      console.error("Error getting device ID:", error);
-      throw error;
-    }
-  };
 
   const generatePairingCode = () => {
     // Generate a 6-character code using uppercase letters and numbers
@@ -111,10 +93,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setUser(userData);
           } else {
             // Check if user is a child
-            const deviceId = await getDeviceId();
             const childQuery = query(
               collection(db, "childProfiles"),
-              where("deviceId", "==", deviceId),
+              where("deviceId", "==", firebaseUser.uid),
               limit(1)
             );
             const childDocs = await getDocs(childQuery);
@@ -322,7 +303,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     createChildProfile,
     pairChildProfile,
-    getDeviceId,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
