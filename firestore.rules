@@ -63,8 +63,8 @@ service cloud.firestore {
       
       allow read: if true && (
         request.auth.uid == resource.data.parentId ||
-        request.auth.uid == resource.data.deviceId
-      );
+        request.auth.uid == resource.data.deviceId || 
+        (request.query.limit <= 1));
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
       allow update: if true && (
@@ -82,7 +82,8 @@ service cloud.firestore {
     // Tasks collection
     match /tasks/{taskId} {
       allow read: if isAuthenticated() && (
-        request.auth.uid == get(/databases/$(database)/documents/childProfiles/$(resource.data.assignedTo)).data.deviceId
+        request.auth.uid == get(/databases/$(database)/documents/childProfiles/$(resource.data.assignedTo)).data.deviceId ||
+        resource.data.parentId == request.auth.uid
       );
       allow create: if isParent() && 
         request.resource.data.parentId == request.auth.uid;
@@ -90,7 +91,7 @@ service cloud.firestore {
         // Parent can update their own tasks
         (isParent() && resource.data.parentId == request.auth.uid) ||
         // Child can only complete their assigned tasks
-        (isChild() && 
+        (
          resource.data.assignedTo == request.auth.uid &&
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isCompleted', 'updatedAt']))
       );
