@@ -9,7 +9,7 @@ interface TaskCardProps {
   reward: number;
   isCompleted: boolean;
   onPress: () => void;
-  onComplete: () => void;
+  onComplete?: () => void;
   isChildView?: boolean;
 }
 

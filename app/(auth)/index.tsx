@@ -1,15 +1,10 @@
 import React from "react";
 import { View, Text, StyleSheet, ViewStyle, TextStyle } from "react-native";
-import { theme } from "../../theme";
-import { Button } from "../../../components/ui/Button";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { AuthStackParamList } from "../../types/navigation";
+import { router } from "expo-router";
+import { theme } from "../theme";
+import { Button } from "../../components/ui/Button";
 
-type UserTypeScreenProps = {
-  navigation: NativeStackNavigationProp<AuthStackParamList, "UserType">;
-};
-
-export default function UserTypeScreen({ navigation }: UserTypeScreenProps) {
+export default function UserTypeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -23,14 +18,12 @@ export default function UserTypeScreen({ navigation }: UserTypeScreenProps) {
         <View style={styles.buttons}>
           <Button
             title="I'm a Parent"
-            onPress={() =>
-              navigation.navigate("Register", { userType: "parent" })
-            }
+            onPress={() => router.push("/(auth)/register?userType=parent")}
             fullWidth
           />
           <Button
             title="I'm a Child"
-            onPress={() => navigation.navigate("PairProfile")}
+            onPress={() => router.push("/(auth)/pair-profile")}
             fullWidth
             variant="secondary"
           />

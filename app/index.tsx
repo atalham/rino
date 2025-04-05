@@ -1,5 +1,5 @@
-import { Navigation } from "./navigation";
+import { Redirect } from "expo-router";
 
 export default function Index() {
-  return <Navigation />;
+  return <Redirect href="/(auth)" />;
 }

@@ -44,6 +44,12 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   createChildProfile: (name: string) => Promise<ChildProfile>;
   pairChildProfile: (pairingCode: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    userType: "parent" | "child"
+  ) => Promise<void>;
+  pairWithParent: (pairCode: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -281,6 +287,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const register = async (
+    email: string,
+    password: string,
+    userType: "parent" | "child"
+  ) => {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      await setDoc(doc(db, "users", userCredential.user.uid), {
+        email,
+        userType,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      console.error("Error in register:", error);
+      throw error;
+    }
+  };
+
+  const pairWithParent = async (pairCode: string) => {
+    if (!auth.currentUser) {
+      throw new Error("Not authenticated");
+    }
+
+    try {
+      // Find parent by pair code
+      const parentQuery = query(
+        collection(db, "parents"),
+        where("pairCode", "==", pairCode)
+      );
+      const parentDocs = await getDocs(parentQuery);
+
+      if (parentDocs.empty) {
+        throw new Error("Invalid pairing code");
+      }
+
+      const parentDoc = parentDocs.docs[0];
+
+      // Update user with parent reference
+      await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        parentId: parentDoc.id,
+        updatedAt: new Date(),
+      });
+
+      // Update child profile with device info
+      await updateDoc(doc(db, "childProfiles", auth.currentUser.uid), {
+        deviceId: auth.currentUser.uid,
+        lastPairedAt: new Date(),
+      });
+    } catch (error) {
+      console.error("Error in pairWithParent:", error);
+      throw error;
+    }
+  };
+
   const signOut = async () => {
     try {
       setIsLoading(true);
@@ -303,6 +368,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
     createChildProfile,
     pairChildProfile,
+    register,
+    pairWithParent,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

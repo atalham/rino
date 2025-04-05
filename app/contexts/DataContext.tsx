@@ -19,13 +19,26 @@ export interface Task {
   id: string;
   title: string;
   description: string;
+  points: number;
   reward: number;
-  isCompleted: boolean;
+  status: "idle" | "ongoing" | "pending_approval" | "completed" | "approved";
   dueDate?: Date;
-  assignedTo?: string; // childId
+  assignedTo?: string;
   parentId: string;
+  requiresProof?: boolean;
   createdAt: Date;
   updatedAt: Date;
+  submission?: {
+    text?: string;
+    imageUrl?: string;
+    submittedAt: Date;
+  };
+  steps?: {
+    id: string;
+    title: string;
+    description: string;
+    isCompleted: boolean;
+  }[];
 }
 
 export interface Reward {
@@ -45,6 +58,7 @@ export interface Parent {
   email: string;
   phone: string;
   avatar?: string;
+  avatarUrl?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,6 +69,10 @@ export interface Child {
   parentId: string;
   deviceId?: string;
   lastPairedAt?: Date;
+  avatarUrl?: string;
+  points: number;
+  completedTasks: number;
+  redeemedRewards: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -64,6 +82,9 @@ interface DataContextType {
   rewards: Reward[];
   parent: Parent | null;
   children: Child[];
+  childProfile: Child | null;
+  parentProfile: Parent | null;
+  childPoints: number;
   isLoading: boolean;
   addTask: (
     task: Omit<Task, "id" | "createdAt" | "updatedAt">
@@ -79,6 +100,15 @@ interface DataContextType {
   redeemReward: (id: string) => Promise<void>;
   updateParent: (parent: Partial<Parent>) => Promise<void>;
   createChildProfile: (name: string) => Promise<Child>;
+  getTask: (id: string) => Task | undefined;
+  getReward: (id: string) => Reward | undefined;
+  createTask: (
+    task: Omit<Task, "id" | "createdAt" | "updatedAt">
+  ) => Promise<void>;
+  createReward: (
+    reward: Omit<Reward, "id" | "createdAt" | "updatedAt">
+  ) => Promise<void>;
+  submitTask: (taskId: string, proofImage?: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -109,7 +139,6 @@ export function DataProvider({
     let rewardsUnsubscribe: () => void;
     let childrenUnsubscribe: () => void;
 
-    // Load parent data first (needed for both roles)
     const loadParentData = async () => {
       try {
         const parentId = user.userType === "parent" ? user.uid : user.parentId;
@@ -133,9 +162,7 @@ export function DataProvider({
       }
     };
 
-    // Set up data subscriptions based on user type
     if (user.userType === "parent") {
-      // Parent sees all their tasks
       const tasksQuery = query(
         collection(db, "tasks"),
         where("parentId", "==", user.uid)
@@ -150,7 +177,6 @@ export function DataProvider({
         setTasks(tasksData);
       });
 
-      // Parent sees all their rewards
       const rewardsQuery = query(
         collection(db, "rewards"),
         where("parentId", "==", user.uid)
@@ -165,7 +191,6 @@ export function DataProvider({
         setRewards(rewardsData);
       });
 
-      // Parent sees all their children
       const childrenQuery = query(
         collection(db, "childProfiles"),
         where("parentId", "==", user.uid)
@@ -180,12 +205,7 @@ export function DataProvider({
         })) as Child[];
         setChildren(childrenData);
       });
-      // Load parent data and set loading state
-      loadParentData().finally(() => {
-        setIsLoading(false);
-      });
     } else if (user.userType === "child") {
-      // Child sees only their assigned tasks
       const tasksQuery = query(
         collection(db, "tasks"),
         where("assignedTo", "==", user.uid)
@@ -200,7 +220,6 @@ export function DataProvider({
         setTasks(tasksData);
       });
 
-      // Child sees their parent's rewards
       if (user.parentId) {
         const rewardsQuery = query(
           collection(db, "rewards"),
@@ -218,6 +237,10 @@ export function DataProvider({
       }
     }
 
+    loadParentData().finally(() => {
+      setIsLoading(false);
+    });
+
     return () => {
       tasksUnsubscribe?.();
       rewardsUnsubscribe?.();
@@ -225,7 +248,6 @@ export function DataProvider({
     };
   }, [user]);
 
-  // Modify task operations to check user type
   const addTask = async (
     task: Omit<Task, "id" | "createdAt" | "updatedAt">
   ) => {
@@ -256,7 +278,6 @@ export function DataProvider({
 
     const taskData = taskDoc.data() as Task;
 
-    // Only parent can update task details, child can only complete tasks
     if (user.userType === "child" && taskData.assignedTo !== user.uid) {
       throw new Error("Not authorized to update this task");
     }
@@ -288,7 +309,6 @@ export function DataProvider({
 
     const taskData = taskDoc.data() as Task;
 
-    // Only the assigned child can complete the task
     if (user.userType === "child" && taskData.assignedTo !== user.uid) {
       throw new Error("Not authorized to complete this task");
     }
@@ -299,7 +319,6 @@ export function DataProvider({
     });
   };
 
-  // Modify reward operations to check user type
   const addReward = async (
     reward: Omit<Reward, "id" | "createdAt" | "updatedAt">
   ) => {
@@ -353,7 +372,6 @@ export function DataProvider({
 
     const rewardData = rewardDoc.data() as Reward;
 
-    // Only allow redeeming rewards from the child's parent
     if (rewardData.parentId !== user.parentId) {
       throw new Error("Not authorized to redeem this reward");
     }
@@ -371,7 +389,6 @@ export function DataProvider({
     const parentDoc = await getDoc(parentRef);
 
     if (!parentDoc.exists()) {
-      // Create new parent document
       const newParent: Omit<Parent, "id"> = {
         ...parentData,
         createdAt: new Date(),
@@ -380,7 +397,6 @@ export function DataProvider({
       await setDoc(parentRef, newParent);
       setParent({ id: user.uid, ...newParent } as Parent);
     } else {
-      // Update existing parent document
       await updateDoc(parentRef, {
         ...parentData,
         updatedAt: new Date(),
@@ -399,6 +415,9 @@ export function DataProvider({
       parentId: user.uid,
       createdAt: new Date(),
       updatedAt: new Date(),
+      points: 0,
+      completedTasks: 0,
+      redeemedRewards: 0,
     };
 
     const docRef = await addDoc(collection(db, "childProfiles"), newChild);
@@ -408,11 +427,91 @@ export function DataProvider({
     };
   };
 
+  const getTask = (id: string) => {
+    return tasks.find((task) => task.id === id);
+  };
+
+  const getReward = (id: string) => {
+    return rewards.find((reward) => reward.id === id);
+  };
+
+  const createTask = async (
+    task: Omit<Task, "id" | "createdAt" | "updatedAt">
+  ) => {
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can create tasks");
+    }
+
+    const newTask: Omit<Task, "id"> = {
+      ...task,
+      parentId: user.uid,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const docRef = doc(collection(db, "tasks"));
+    await setDoc(docRef, newTask);
+  };
+
+  const createReward = async (
+    reward: Omit<Reward, "id" | "createdAt" | "updatedAt">
+  ) => {
+    if (!user || user.userType !== "parent") {
+      throw new Error("Only parents can create rewards");
+    }
+
+    const newReward: Omit<Reward, "id"> = {
+      ...reward,
+      parentId: user.uid,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const docRef = doc(collection(db, "rewards"));
+    await setDoc(docRef, newReward);
+  };
+
+  const submitTask = async (taskId: string, proofImage?: string) => {
+    if (!user || user.userType !== "child") {
+      throw new Error("Only children can submit tasks");
+    }
+
+    const taskRef = doc(db, "tasks", taskId);
+    const taskDoc = await getDoc(taskRef);
+
+    if (!taskDoc.exists()) {
+      throw new Error("Task not found");
+    }
+
+    const taskData = taskDoc.data() as Task;
+    if (taskData.assignedTo !== user.uid) {
+      throw new Error("Not authorized to submit this task");
+    }
+
+    await updateDoc(taskRef, {
+      status: "pending_approval",
+      submission: {
+        imageUrl: proofImage,
+        submittedAt: new Date(),
+      },
+      updatedAt: new Date(),
+    });
+  };
+
   const value = {
     tasks,
     rewards,
     parent,
     children,
+    childProfile:
+      user?.userType === "child"
+        ? children.find((c) => c.id === user.uid) || null
+        : null,
+    parentProfile: user?.userType === "parent" ? parent : null,
+    childPoints:
+      user?.userType === "child"
+        ? children.find((c) => c.id === user.uid)?.points || 0
+        : 0,
     isLoading,
     addTask,
     updateTask,
@@ -424,6 +523,11 @@ export function DataProvider({
     redeemReward,
     updateParent,
     createChildProfile,
+    getTask,
+    getReward,
+    createTask,
+    createReward,
+    submitTask,
   };
 
   return (
